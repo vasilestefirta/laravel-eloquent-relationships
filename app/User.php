@@ -46,4 +46,14 @@ class User extends Authenticatable
     {
         return $this->hasOne(Profile::class);
     }
+
+    /**
+     * Define the relationship between the given user and the posts he/she created.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function posts()
+    {
+        return $this->hasMany(Post::class);
+    }
 }
