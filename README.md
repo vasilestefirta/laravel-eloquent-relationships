@@ -968,3 +968,245 @@ FROM
 	WHERE
 		`users`.`affiliation_id` = 1;
 ```
+
+## Polymorphic Relations
+
+We'll use a relationship between a `Video` and a `Series` or `Collection` models as an example:
+
+### 1. Table schemas
+
+`series` table:
+
+```php
+Schema::create('series', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->string('name');
+    $table->timestamps();
+});
+```
+
+`collections` table:
+
+```php
+Schema::create('collections', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->string('name');
+    $table->timestamps();
+});
+```
+
+`videos` table:
+
+```php
+Schema::create('videos', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->morphs('watchable'); // generates "watchable_type" and "watchable_id" columns
+    $table->string('title');
+    $table->string('description');
+    $table->timestamps();
+});
+```
+
+### 2. Models:
+
+`Series.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Series extends Model
+{
+    /**
+     * Define the relationship between the given series
+     * and all videos associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
+     */
+    public function videos()
+    {
+        return $this->morphMany(Video::class, 'watchable');
+    }
+}
+```
+
+`Collection.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Collection extends Model
+{
+    /**
+     * Define the relationship between the given collection
+     * and all videos associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
+     */
+    public function videos()
+    {
+        return $this->morphMany(Video::class, 'watchable');
+    }
+}
+```
+
+`Video.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Video extends Model
+{
+    /**
+     * Define the relationship between the given video
+     * and the "watchable" is associated with.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphTo
+     */
+    public function watchable()
+    {
+        return $this->morphTo();
+    }
+}
+```
+
+### 3. Usage
+
+Query a list of `videos` associated with a given `series` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $series = App\Series::find(2);
+=> App\Series {#2922
+     id: "2",
+     name: "Itaque quo et.",
+     created_at: "2019-04-07 03:59:48",
+     updated_at: "2019-04-07 03:59:48",
+   }
+>>> $series->videos;
+=> Illuminate\Database\Eloquent\Collection {#2940
+     all: [
+       App\Video {#2941
+         id: "2",
+         watchable_type: "App\Series",
+         watchable_id: "2",
+         title: "Quasi ut debitis incidunt perspiciatis.",
+         description: "Optio commodi unde ut.",
+         created_at: "2019-04-07 03:59:48",
+         updated_at: "2019-04-07 03:59:48",
+       },
+     ],
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `series` where `series`.`id` = ? limit 1",
+       "bindings" => [
+         2,
+       ],
+       "time" => 0.63,
+     ],
+     [
+       "query" => "select * from `videos` where `videos`.`watchable_id` = ? and `videos`.`watchable_id` is not null and `videos`.`watchable_type` = ?",
+       "bindings" => [
+         2,
+         "App\Series",
+       ],
+       "time" => 0.15,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch series:
+SELECT
+	*
+FROM
+	`series`
+WHERE
+	`series`.`id` = 2
+LIMIT 1;
+
+-- Fetch videos:
+SELECT
+	*
+FROM
+	`videos`
+WHERE
+	`videos`.`watchable_id` = 2
+	AND `videos`.`watchable_id` IS NOT NULL
+	AND `videos`.`watchable_type` = 'App\Series';
+```
+
+Find out if the given `video` is part of a `series` or `collection` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $video = App\Video::find(3);
+=> App\Video {#2922
+     id: "3",
+     watchable_type: "App\Collection",
+     watchable_id: "1",
+     title: "Consequatur repellendus eius repellendus.",
+     description: "Commodi consequatur voluptatem aut incidunt molestiae et autem.",
+     created_at: "2019-04-07 03:59:48",
+     updated_at: "2019-04-07 03:59:48",
+   }
+>>> $video->watchable;
+=> App\Collection {#2936
+     id: "1",
+     name: "Dolorem provident.",
+     created_at: "2019-04-07 03:59:48",
+     updated_at: "2019-04-07 03:59:48",
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from "videos" where "videos"."id" = ? limit 1",
+       "bindings" => [
+         3,
+       ],
+       "time" => 0.61,
+     ],
+     [
+       "query" => "select * from "collections" where "collections"."id" = ? limit 1",
+       "bindings" => [
+         "1",
+       ],
+       "time" => 0.13,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch video:
+SELECT
+	*
+FROM
+	`videos`
+WHERE
+	`videos`.`id` = 3
+LIMIT 1;
+
+-- Fetch `watchable`:
+SELECT
+	*
+FROM
+	`collections`
+WHERE
+	`collections`.`id` = 1
+LIMIT 1;
+```
