@@ -16,4 +16,15 @@ class Post extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Define the relationship between the given post and
+     * all the tags associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class)->withTimestamps();
+    }
 }

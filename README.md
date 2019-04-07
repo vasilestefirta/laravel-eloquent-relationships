@@ -125,6 +125,27 @@ Query the `profile` associated with a given `user` (output from `php artisan tin
 >>>
 ```
 
+SQL queries beautified:
+
+```sql
+-- Fetch user:
+SELECT
+	*
+FROM
+	`users`
+LIMIT 1;
+
+-- Fetch profile:
+SELECT
+	*
+FROM
+	`profiles`
+WHERE
+	`profiles`.`user_id` = 1
+	AND `profiles`.`user_id` IS NOT NULL
+LIMIT 1;
+```
+
 Query the `user` associated with a given `profile` (output from `php artisan tinker`):
 
 ```php
@@ -165,6 +186,26 @@ Query the `user` associated with a given `profile` (output from `php artisan tin
      ],
    ]
 >>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch profile:
+SELECT
+	*
+FROM
+	`profiles`
+LIMIT 1;
+
+-- Fetch user:
+SELECT
+	*
+FROM
+	`users`
+WHERE
+	`users`.`id` = 1
+LIMIT 1
 ```
 
 ## One to Many
@@ -302,6 +343,26 @@ Query a list of `posts` created by the given `user` (output from `php artisan ti
 >>>
 ```
 
+SQL queries beautified:
+
+```sql
+-- Fetch user:
+SELECT
+	*
+FROM
+	`users`
+LIMIT 1;
+
+-- Fetch posts:
+SELECT
+	*
+FROM
+	`posts`
+WHERE
+	`posts`.`user_id` = 1
+	AND `posts`.`user_id` IS NOT NULL;
+```
+
 Query the `user` who created a given `post` (output from `php artisan tinker`):
 
 ```php
@@ -341,4 +402,379 @@ Query the `user` who created a given `post` (output from `php artisan tinker`):
      ],
    ]
 >>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch post:
+SELECT
+	*
+FROM
+	`posts`
+LIMIT 1;
+
+-- Fetch user:
+SELECT
+	*
+FROM
+	`users`
+WHERE
+	`users`.`id` = 1
+LIMIT 1;
+```
+
+## Many to Many
+
+We'll use a relationship between a `Post` and a `Tag` model as an example:
+
+### 1. Table schemas
+
+`posts` table:
+
+```php
+Schema::create('posts', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->unsignedInteger('user_id');
+    $table->string('title');
+    $table->string('body');
+    $table->timestamps();
+});
+```
+
+`tags` table:
+
+```php
+Schema::create('tags', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->string('name');
+    $table->timestamps();
+});
+```
+
+`post_tag` pivot table:
+
+```php
+Schema::create('post_tag', function (Blueprint $table) {
+    $table->primary(['post_id', 'tag_id']);
+    $table->unsignedInteger('post_id');
+    $table->unsignedInteger('tag_id');
+    $table->timestamps();
+
+    $table->foreign('post_id')->references('id')->on('posts')->onDelete('cascade');
+    $table->foreign('tag_id')->references('id')->on('tags')->onDelete('cascade');
+});
+```
+
+### 2. Models:
+
+`Post.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    /**
+     * Define the relationship between the given post and
+     * all the tags associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class)->withTimestamps();
+    }
+}
+```
+
+`Tag.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Tag extends Model
+{
+    /**
+     * Define the relationship between the given tag and
+     * all the posts it was associated to.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function posts()
+    {
+        return $this->belongsToMany(Post::class)->withTimestamps();
+    }
+}
+```
+
+### 3. Usage
+
+Query a list of `tags` associated with the given `post` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $post = App\Post::first();
+=> App\Post {#2937
+     id: "1",
+     user_id: "1",
+     title: "Quia rerum voluptas quis dolores corrupti dolores autem.",
+     body: "Deleniti commodi et et ut autem magnam fugit.",
+     created_at: "2019-04-07 00:27:43",
+     updated_at: "2019-04-07 00:27:43",
+   }
+>>> $post->tags;
+=> Illuminate\Database\Eloquent\Collection {#2940
+     all: [
+       App\Tag {#2938
+         id: "1",
+         name: "family",
+         created_at: "2019-04-07 00:37:17",
+         updated_at: "2019-04-07 00:37:17",
+         pivot: Illuminate\Database\Eloquent\Relations\Pivot {#2928
+           post_id: "1",
+           tag_id: "1",
+         },
+       },
+       App\Tag {#2944
+         id: "2",
+         name: "personal",
+         created_at: "2019-04-07 00:37:17",
+         updated_at: "2019-04-07 00:37:17",
+         pivot: Illuminate\Database\Eloquent\Relations\Pivot {#2930
+           post_id: "1",
+           tag_id: "2",
+         },
+       },
+     ],
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `posts` limit 1",
+       "bindings" => [],
+       "time" => 0.7,
+     ],
+     [
+       "query" => "select `tags`.*, `post_tag`.`post_id` as `pivot_post_id`, `post_tag`.`tag_id` as `pivot_tag_id` from `tags` inner join `post_tag` on `tags`.`id` = `post_tag`.`tag_id` where `post_tag`.`post_id` = ?",
+       "bindings" => [
+         1,
+       ],
+       "time" => 0.18,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch post:
+SELECT
+	*
+FROM
+	`posts`
+LIMIT 1;
+
+-- Fetch tags:
+SELECT
+	`tags`.*,
+	`post_tag`.`post_id` AS `pivot_post_id`,
+	`post_tag`.`tag_id` AS `pivot_tag_id`
+FROM
+	`tags`
+	INNER JOIN `post_tag` ON `tags`.`id` = `post_tag`.`tag_id`
+	WHERE
+		`post_tag`.`post_id` = 1;
+```
+
+Query a list of `posts` associated with the given `tag` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $tag = App\Tag::find(2);
+=> App\Tag {#2922
+     id: "2",
+     name: "personal",
+     created_at: "2019-04-07 00:37:17",
+     updated_at: "2019-04-07 00:37:17",
+   }
+>>> $tag->posts;
+=> Illuminate\Database\Eloquent\Collection {#2940
+     all: [
+       App\Post {#2939
+         id: "1",
+         user_id: "1",
+         title: "Quia rerum voluptas quis dolores corrupti dolores autem.",
+         body: "Deleniti commodi et et ut autem magnam fugit.",
+         created_at: "2019-04-07 00:27:43",
+         updated_at: "2019-04-07 00:27:43",
+         pivot: Illuminate\Database\Eloquent\Relations\Pivot {#2933
+           tag_id: "2",
+           post_id: "1",
+         },
+       },
+     ],
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `tags` where `tags`.`id` = ? limit 1",
+       "bindings" => [
+         2,
+       ],
+       "time" => 0.63,
+     ],
+     [
+       "query" => "select `posts`.*, `post_tag`.`tag_id` as `pivot_tag_id`, `post_tag`.`post_id` as `pivot_post_id` from `posts` inner join `post_tag` on `posts`.`id` = `post_tag`.`post_id` where `post_tag`.`tag_id` = ?",
+       "bindings" => [
+         2,
+       ],
+       "time" => 0.18,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch tag:
+SELECT
+	*
+FROM
+	`tags`
+WHERE
+	`tags`.`id` = 2
+LIMIT 1;
+
+-- Fetch posts:
+SELECT
+	`posts`.*,
+	`post_tag`.`tag_id` AS `pivot_tag_id`,
+	`post_tag`.`post_id` AS `pivot_post_id`
+FROM
+	`posts`
+	INNER JOIN `post_tag` ON `posts`.`id` = `post_tag`.`post_id`
+	WHERE
+		`post_tag`.`tag_id` = 2;
+```
+
+Attach `tag` to a given `post` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $post = App\Post::find(1);
+=> App\Post {#2922
+     id: "1",
+     user_id: "1",
+     title: "Quia rerum voluptas quis dolores corrupti dolores autem.",
+     body: "Deleniti commodi et et ut autem magnam fugit.",
+     created_at: "2019-04-07 00:27:43",
+     updated_at: "2019-04-07 00:27:43",
+   }
+>>> $post->tags()->attach(1);
+=> null
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `posts` where `posts`.`id` = ? limit 1",
+       "bindings" => [
+         1,
+       ],
+       "time" => 0.67,
+     ],
+     [
+       "query" => "insert into `post_tag` (`created_at`, `post_id`, `tag_id`, `updated_at`) values (?, ?, ?, ?)",
+       "bindings" => [
+         Illuminate\Support\Carbon @1554601014 {#2928
+           date: 2019-04-07 01:36:54.250962 UTC (+00:00),
+         },
+         1,
+         1,
+         Illuminate\Support\Carbon @1554601014 {#2928},
+       ],
+       "time" => 1.23,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch post:
+SELECT
+	*
+FROM
+	`posts`
+WHERE
+	`posts`.`id` = ?
+LIMIT 1;
+
+-- Attach tag:
+INSERT INTO `post_tag` (`created_at`, `post_id`, `tag_id`, `updated_at`)
+	VALUES ('2019-04-07 01:36:54', 1, 1, '2019-04-07 01:36:54');
+```
+
+Remove `tag` from a given `post` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $post = App\Post::find(1);
+=> App\Post {#2922
+     id: "1",
+     user_id: "1",
+     title: "Quia rerum voluptas quis dolores corrupti dolores autem.",
+     body: "Deleniti commodi et et ut autem magnam fugit.",
+     created_at: "2019-04-07 00:27:43",
+     updated_at: "2019-04-07 00:27:43",
+   }
+>>> $post->tags()->detach(1);
+=> 1
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `posts` where `posts`.`id` = ? limit 1",
+       "bindings" => [
+         1,
+       ],
+       "time" => 0.65,
+     ],
+     [
+       "query" => "delete from `post_tag` where `post_id` = ? and `tag_id` in (?)",
+       "bindings" => [
+         1,
+         1,
+       ],
+       "time" => 1.72,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch post:
+SELECT
+	*
+FROM
+	`posts`
+WHERE
+	`posts`.`id` = ?
+LIMIT 1;
+
+-- Remove tag:
+DELETE FROM `post_tag`
+WHERE `post_id` = 1
+	AND `tag_id` IN (1);
 ```
