@@ -778,3 +778,193 @@ DELETE FROM `post_tag`
 WHERE `post_id` = 1
 	AND `tag_id` IN (1);
 ```
+
+## Has Many Through
+
+We'll use a relationship between an `Affiliation` and a `Post` model through a `User` model as an example:
+
+### 1. Table schemas
+
+`affiliations` table:
+
+```php
+Schema::create('affiliations', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->string('name')->unique();
+    $table->timestamps();
+});
+```
+
+`users` table:
+
+```php
+Schema::create('users', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->unsignedInteger('affiliation_id');
+    $table->string('name');
+    $table->string('email')->unique();
+    $table->timestamp('email_verified_at')->nullable();
+    $table->string('password');
+    $table->rememberToken();
+    $table->timestamps();
+});
+```
+
+`posts` table:
+
+```php
+Schema::create('posts', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->unsignedInteger('user_id');
+    $table->string('title');
+    $table->string('body');
+    $table->timestamps();
+});
+```
+
+### 2. Models:
+
+`Affiliation.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Affiliation extends Model
+{
+    /**
+     * Define the relationship between the given affiliation
+     * and all posts created by users associated with this affiliation.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
+     */
+    public function posts()
+    {
+        return $this->hasManyThrough(Post::class, User::class);
+    }
+}
+```
+
+`User.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+
+class User extends Authenticatable
+{
+    use Notifiable;
+
+    /**
+     * Define the relationship between the given user and the posts he/she created.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function posts()
+    {
+        return $this->hasMany(Post::class);
+    }
+}
+```
+
+`Post.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    /**
+     * Define the relationship between the given post
+     * and the user it was created by.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+### 3. Usage
+
+Query a list of `posts` created by `users` associated with the given `affiliation` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $affiliation = App\Affiliation::first();
+=> App\Affiliation {#2937
+     id: "1",
+     name: "enim",
+     created_at: "2019-04-07 02:56:25",
+     updated_at: "2019-04-07 02:56:25",
+   }
+>>> $affiliation->posts;
+=> Illuminate\Database\Eloquent\Collection {#2939
+     all: [
+       App\Post {#2941
+         id: "1",
+         user_id: "1",
+         title: "Dignissimos in consequatur neque dolore et amet.",
+         body: "Provident quo qui neque ipsam et voluptatem sit.",
+         created_at: "2019-04-07 02:58:13",
+         updated_at: "2019-04-07 02:58:13",
+         laravel_through_key: "1",
+       },
+       App\Post {#2945
+         id: "2",
+         user_id: "2",
+         title: "Dolorum eos enim non.",
+         body: "Officia nulla minima aut animi labore.",
+         created_at: "2019-04-07 02:58:16",
+         updated_at: "2019-04-07 02:58:16",
+         laravel_through_key: "1",
+       },
+     ],
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from `affiliations` limit 1",
+       "bindings" => [],
+       "time" => 0.66,
+     ],
+     [
+       "query" => "select `posts`.*, `users`.`affiliation_id` as `laravel_through_key` from `posts` inner join `users` on `users`.`id` = `posts`.`user_id` where `users`.`affiliation_id` = ?",
+       "bindings" => [
+         1,
+       ],
+       "time" => 0.19,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch affiliation:
+SELECT
+	*
+FROM
+	`affiliations`
+LIMIT 1;
+
+-- Fetch posts:
+SELECT
+	`posts`.*,
+	`users`.`affiliation_id` AS `laravel_through_key`
+FROM
+	`posts`
+	INNER JOIN `users` ON `users`.`id` = `posts`.`user_id`
+	WHERE
+		`users`.`affiliation_id` = 1;
+```
