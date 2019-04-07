@@ -27,4 +27,27 @@ class Post extends Model
     {
         return $this->belongsToMany(Tag::class)->withTimestamps();
     }
+
+    /**
+     * Like the current post.
+     *
+     * @return void
+     */
+    public function like($user = null)
+    {
+        $user = $user ?: auth()->user();
+
+        $this->likes()->attach($user);
+    }
+
+    /**
+     * Define the relationship between the given "likable" (post)
+     * and the "likes" associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphToMany
+     */
+    public function likes()
+    {
+        return $this->morphToMany(User::class, 'likable')->withTimestamps();
+    }
 }

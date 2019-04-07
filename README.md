@@ -1210,3 +1210,208 @@ WHERE
 	`collections`.`id` = 1
 LIMIT 1;
 ```
+
+## Many to Many Polymorphic Relations
+
+We'll use a relationship between a `Post` or `Comment` model and the `User` model who can like posts and comments:
+
+### 1. Table schemas
+
+`posts` table:
+
+```php
+Schema::create('posts', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->unsignedInteger('user_id');
+    $table->string('title');
+    $table->string('body');
+    $table->timestamps();
+});
+```
+
+`comments` table:
+
+```php
+Schema::create('comments', function (Blueprint $table) {
+    $table->bigIncrements('id');
+    $table->unsignedInteger('post_id');
+    $table->string('body');
+    $table->timestamps();
+});
+```
+
+`likables` table:
+
+```php
+Schema::create('likables', function (Blueprint $table) {
+    $table->primary(['user_id', 'likable_id', 'likable_type']);
+    $table->unsignedInteger('user_id');
+    $table->morphs('likable');
+    $table->timestamps();
+});
+```
+
+### 2. Models:
+
+`Posts.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Post extends Model
+{
+    /**
+     * Like the current post.
+     *
+     * @return void
+     */
+    public function like($user = null)
+    {
+        $user = $user ?: auth()->user();
+        $this->likes()->attach($user);
+    }
+
+    /**
+     * Define the relationship between the given "likable" (post)
+     * and the "likes" associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphToMany
+     */
+    public function likes()
+    {
+        return $this->morphToMany(User::class, 'likable')->withTimestamps();
+    }
+}
+```
+
+`Comments.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Comment extends Model
+{
+    /**
+     * Like the current comment.
+     *
+     * @return void
+     */
+    public function like($user = null)
+    {
+        $user = $user ?: auth()->user();
+        $this->likes()->attach($user);
+    }
+
+    /**
+     * Define the relationship between the given "likable" (comment)
+     * and the "likes" associated with it.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphToMany
+     */
+    public function likes()
+    {
+        return $this->morphToMany(User::class, 'likable')->withTimestamps();
+    }
+}
+```
+
+`User.php` model:
+
+```php
+namespace App;
+
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+
+class User extends Authenticatable
+{
+    use Notifiable;
+}
+```
+
+### 3. Usage
+
+Find `users` who liked the given `comment` (output from `php artisan tinker`):
+
+```php
+>>> DB::enableQueryLog();
+=> null
+>>> $comment = App\Comment::first();
+=> App\Comment {#2937
+     id: "1",
+     post_id: "2",
+     body: "Enim quisquam doloremque atque doloribus aut similique accusamus. Omnis iste odit qui sit culpa est. Nesciunt aut hic
+ reprehenderit dignissimos. In repellendus enim delectus recusandae ut vel necessitatibus.",
+     created_at: "2019-04-07 05:31:23",
+     updated_at: "2019-04-07 05:31:23",
+   }
+>>> $comment->likes;
+=> Illuminate\Database\Eloquent\Collection {#2928
+     all: [
+       App\User {#2940
+         id: "3",
+         affiliation_id: "3",
+         name: "Shaniya Gutkowski",
+         email: "yconn@example.com",
+         email_verified_at: "2019-04-07 05:31:23",
+         created_at: "2019-04-07 05:31:23",
+         updated_at: "2019-04-07 05:31:23",
+         pivot: Illuminate\Database\Eloquent\Relations\MorphPivot {#2930
+           likable_id: "1",
+           user_id: "3",
+           likable_type: "App\Comment",
+           created_at: "2019-04-07 05:31:23",
+           updated_at: "2019-04-07 05:31:23",
+         },
+       },
+     ],
+   }
+>>> DB::getQueryLog();
+=> [
+     [
+       "query" => "select * from "comments" limit 1",
+       "bindings" => [],
+       "time" => 1.15,
+     ],
+     [
+       "query" => "select "users".*, "likables"."likable_id" as "pivot_likable_id", "likables"."user_id" as "pivot_user_id", "likables"."likable_type" as "pivot_likable_type", "likables"."created_at" as "pivot_created_at", "likables"."updated_at" as "pivot_updated_at" from "users" inner join "likables" on "users"."id" = "likables"."user_id" where "likables"."likable_id" = ? and "likables"."likable_type" = ?",
+       "bindings" => [
+         1,
+         "App\Comment",
+       ],
+       "time" => 0.21,
+     ],
+   ]
+>>>
+```
+
+SQL queries beautified:
+
+```sql
+-- Fetch comment:
+SELECT
+	*
+FROM
+	`comments`
+LIMIT 1;
+
+-- Fetch users:
+SELECT
+	`users`.*,
+	`likables`.`likable_id` AS `pivot_likable_id`,
+	`likables`.`user_id` AS `pivot_user_id`,
+	`likables`.`likable_type` AS `pivot_likable_type`,
+	`likables`.`created_at` AS `pivot_created_at`,
+	`likables`.`updated_at` AS `pivot_updated_at`
+FROM
+	`users`
+	INNER JOIN `likables` ON `users`.`id` = `likables`.`user_id`
+	WHERE
+		`likables`.`likable_id` = 1
+		AND `likables`.`likable_type` = 'App\Comment';
+```
