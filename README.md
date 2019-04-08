@@ -1,5 +1,7 @@
 # Eloquent Relationships
 
+This is a repo contains examples used within the [Eloquent Relationships](https://laracasts.com/series/eloquent-relationships) series from [laracasts.com](https://laracasts.com). All credits go to [Jeffrey Way](https://twitter.com/jeffrey_way), the author of those series and creator of Laracasts.
+
 ## One to One
 
 We'll use a relationship between a `User` and a `Profile` model as an example:
