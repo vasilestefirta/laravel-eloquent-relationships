@@ -56,4 +56,22 @@ class User extends Authenticatable
     {
         return $this->hasMany(Post::class);
     }
+
+    /**
+     * Define the relationship between the given user and
+     * all the organizations he/she is associated with.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function organizations()
+    {
+        return $this->belongsToMany(Organization::class)
+            ->using(OrganizationUser::class)
+            ->as('relationship')
+            ->withPivot([
+                'id',
+                'role',
+            ])
+            ->withTimestamps();
+    }
 }
