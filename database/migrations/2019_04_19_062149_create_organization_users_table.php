@@ -15,10 +15,13 @@ class CreateOrganizationUsersTable extends Migration
     {
         Schema::create('organization_user', function (Blueprint $table) {
             $table->bigIncrements('id');
-            $table->unsignedInteger('organization_id');
-            $table->unsignedInteger('user_id');
+            $table->unsignedBigInteger('organization_id');
+            $table->unsignedBigInteger('user_id');
             $table->enum('role', ['admin', 'consumer'])->default('consumer');
             $table->timestamps();
+
+            $table->foreign('organization_id')->references('id')->on('organizations');
+            $table->foreign('user_id')->references('id')->on('users');
         });
     }
 
